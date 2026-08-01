@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self';
+                 img-src 'self' data:; font-src 'self'; connect-src 'none';
+                 form-action 'none'; base-uri 'none'" />
+  <title>CANnula Clinical Workstation</title>
+  <!--
+    CANnula Clinical Workstation v0.0.2 (강화 빌드).
+
+    이 렌더러에는 Node 가 없다. 창은 contextIsolation + sandbox 로 열리고,
+    프리로드가 열어 준 window.cannula 의 좁은 API 만 쓸 수 있다. 장치에서 온
+    문자열은 전부 textContent 로만 화면에 들어간다 (innerHTML 사용 금지).
+  -->
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+
+<div id="login">
+  <div class="box">
+    <h1>CANnula Workstation</h1>
+    <div class="sub">임상 워크스테이션 로그인</div>
+    <div class="fields">
+      <label class="fld">사용자<input id="lgUser" autocomplete="off" /></label>
+      <label class="fld">비밀번호<input id="lgPass" type="password" autocomplete="off" /></label>
+    </div>
+    <button id="lgGo">로그인</button>
+    <div class="err" id="lgErr"></div>
+    <div class="hint">계정은 시스템 관리자에게 발급받습니다.</div>
+  </div>
+</div>
+
+<header>
+  <span class="brand">CANnula Workstation</span>
+  <span class="ver" id="hdrVer">v0.0.2</span>
+  <span class="badge" id="hdrBridge">게이트웨이 —</span>
+  <span class="badge" id="hdrSec">인증 —</span>
+  <span class="badge" id="hdrDevice">장치 —</span>
+  <span class="spacer"></span>
+  <span class="whoami" id="hdrWho"></span>
+  <button class="ghost" id="hdrLogout">로그아웃</button>
+</header>
+
+<main>
+  <aside>
+    <div class="nav" id="nav">
+      <div class="sect">모니터링</div>
+      <button data-view="dash" class="active">대시보드</button>
+      <button data-view="alarms">알람</button>
+      <div class="sect">처방</div>
+      <button data-view="rx">주입 설정</button>
+      <button data-view="patient">환자 정보</button>
+      <div class="sect">서비스</div>
+      <button data-view="diag" data-level="2">진단</button>
+      <button data-view="events">이벤트 로그</button>
+      <div class="sect">시스템</div>
+      <button data-view="settings">설정</button>
+      <button data-view="update" data-level="2">소프트웨어 업데이트</button>
+      <button data-view="about">정보</button>
+    </div>
+    <div class="grow"></div>
+    <div class="site" id="siteInfo"></div>
+  </aside>
+
+  <!-- 대시보드 -->
+  <section class="view active" id="view-dash">
+    <h2>대시보드</h2>
+    <p class="desc">펌프가 보내는 인증된 텔레메트리를 표시합니다. 인증을 통과하지 못한
+      프레임은 반영되지 않고 폐기 수로만 집계됩니다.</p>
+
+    <div id="alarmBanner"><span id="alarmMain"></span><span class="sub" id="alarmSub"></span></div>
+
+    <div class="grid g4">
+      <div class="tile big"><div class="k">주입 속도</div>
+        <div class="v"><span id="tRate">—</span> <span class="u">mL/h</span></div></div>
+      <div class="tile"><div class="k">지시 속도</div>
+        <div class="v"><span id="tSet">—</span> <span class="u">mL/h</span></div></div>
+      <div class="tile"><div class="k">계산 용량</div>
+        <div class="v"><span id="tDose">—</span> <span class="u">mcg/kg/min</span></div></div>
+      <div class="tile"><div class="k">배터리</div>
+        <div class="v"><span id="tBatt">—</span> <span class="u">%</span></div>
+        <div class="bar"><i id="battBar"></i></div></div>
+    </div>
+
+    <div class="grid g3 mt">
+      <div class="tile"><div class="k">주입량 / VTBI</div>
+        <div class="v"><span id="tInf">—</span><span class="u"> / <span id="tVtbi">—</span> mL</span></div>
+        <div class="bar"><i id="volBar"></i></div></div>
+      <div class="tile"><div class="k">잔량</div>
+        <div class="v"><span id="tRem">—</span> <span class="u">mL</span></div></div>
+      <div class="tile"><div class="k">상태 / 약물</div>
+        <div class="v small" id="tState">—</div>
+        <div class="muted sm" id="tDrug"></div></div>
+    </div>
+
+    <div class="card mt">
+      <div class="k">최근 5분 주입 속도</div>
+      <canvas id="chart" width="900" height="130"></canvas>
+    </div>
+
+    <div class="row">
+      <button id="btnStart">주입 시작</button>
+      <button class="danger" id="btnStop">정지</button>
+      <span class="grow"></span>
+      <label class="fld">볼루스 (mL, 최대 <span id="bolusMax">20</span>)
+        <input id="bolusVol" type="number" value="5" min="1" /></label>
+      <button class="warn" id="btnBolus">볼루스 주입</button>
+    </div>
+    <div id="dashMsg" class="msg"></div>
+
+    <h3>가드레일 (DERS)</h3>
+    <div class="card">
+      <div class="row">
+        <div>상태: <b id="dersState">—</b></div>
+        <div>경고 상한: <b id="dersSoft">—</b> mL/h</div>
+        <div>절대 상한: <b id="dersHard">—</b> mL/h</div>
+        <div>안전 상태 무결성: <b id="dersIntegrity">—</b></div>
+        <div>권한 레벨: <b id="dersAuth">—</b></div>
+      </div>
+      <div class="muted sm mt">절대 상한은 빌드에 고정된 값입니다. 실행 중에 넓힐 수 없습니다.</div>
+    </div>
+
+    <h3>프레임 인증</h3>
+    <div class="card">
+      <div class="row">
+        <div>통과: <b id="secOk">—</b></div>
+        <div>MAC 불일치: <b id="secMac">—</b></div>
+        <div>리플레이: <b id="secReplay">—</b></div>
+        <div>신선도 초과: <b id="secStale">—</b></div>
+        <div>형식 오류: <b id="secForm">—</b></div>
+        <div>비인증 폐기: <b id="secDropped">—</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 알람 -->
+  <section class="view" id="view-alarms">
+    <h2>알람</h2>
+    <p class="desc">펌프가 보낸 인증된 알람 이벤트입니다.</p>
+    <div class="row mb">
+      <button id="btnAck">현재 알람 확인</button>
+      <button class="ghost" id="btnAlarmClear">목록 지우기</button>
+      <span class="msg" id="alarmMsg"></span>
+    </div>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>시각</th><th>코드</th><th>내용</th><th>펌프 상태</th></tr></thead>
+        <tbody id="alarmRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 주입 설정 -->
+  <section class="view" id="view-rx">
+    <h2>주입 설정</h2>
+    <p class="desc">가드레일 검증을 통과한 처방만 펌프로 전송됩니다.</p>
+    <div class="card">
+      <div class="grid g4">
+        <label class="fld">약물<select id="rxDrug"></select></label>
+        <label class="fld">주입 속도 (mL/h)<input id="rxRate" type="number" value="20" min="0" /></label>
+        <label class="fld">총 주입량 VTBI (mL)<input id="rxVtbi" type="number" value="500" min="1" /></label>
+        <label class="fld">환자 체중 (kg)<input id="rxWeight" type="number" value="70" min="1" max="250" /></label>
+      </div>
+      <div class="card inner mt">
+        <div class="muted sm">계산 결과</div>
+        <div id="rxCalc" class="mono mt-s">—</div>
+      </div>
+      <div class="row mt">
+        <button id="rxSend">펌프로 전송</button>
+        <span class="grow"></span>
+        <div id="rxVerdict"></div>
+      </div>
+      <div class="msg" id="rxMsg"></div>
+    </div>
+
+    <h3>약물 라이브러리</h3>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>ID</th><th>이름</th><th>농도</th><th>최소</th><th>최대</th></tr></thead>
+        <tbody id="drugRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 환자 정보 -->
+  <section class="view" id="view-patient">
+    <h2>환자 정보</h2>
+    <p class="desc">이 워크스테이션에 배정된 환자입니다. 이벤트 로그에는 가명 식별자만
+      기록됩니다.</p>
+    <div class="card">
+      <div class="grid g3">
+        <label class="fld">환자 ID<input id="ptId" /></label>
+        <label class="fld">이름<input id="ptName" /></label>
+        <label class="fld">병실 / 침상<input id="ptBed" /></label>
+        <label class="fld">체중 (kg)<input id="ptWeight" type="number" /></label>
+        <label class="fld">신장 (cm)<input id="ptHeight" type="number" /></label>
+        <label class="fld">알레르기<input id="ptAllergy" /></label>
+      </div>
+      <div class="row mt">
+        <button id="ptSave">저장</button>
+        <span class="msg" id="ptMsg"></span>
+      </div>
+    </div>
+    <div class="card"><div class="muted sm">현재 배정</div><div id="ptCard" class="mt-s"></div></div>
+  </section>
+
+  <!-- 진단 -->
+  <section class="view" id="view-diag">
+    <h2>진단</h2>
+    <p class="desc">서비스 기사용 화면입니다. 장치로 보낼 수 있는 명령과 실행할 수 있는
+      진단 도구는 허용 목록으로 제한됩니다.</p>
+
+    <div class="card">
+      <h3 class="t0">장치 서비스 명령</h3>
+      <div class="row">
+        <label class="fld">명령<select id="svcCmd"></select></label>
+        <button id="svcGo">전송</button>
+      </div>
+      <div class="muted sm mt">장치 응답</div>
+      <div id="svcOut" class="card inner mono mt-s">—</div>
+      <div class="msg" id="svcMsg"></div>
+    </div>
+
+    <div class="card">
+      <h3 class="t0">시스템 진단 도구</h3>
+      <div class="row">
+        <label class="fld">도구<select id="diagTool"></select></label>
+        <button id="diagGo">실행</button>
+      </div>
+      <pre class="out mt" id="diagOut">—</pre>
+    </div>
+
+    <h3>버스 트래픽</h3>
+    <p class="desc sm">봉투 내용은 표시하지 않습니다. ID·길이·검증 결과만 기록합니다.</p>
+    <div class="row mb">
+      <button class="ghost" id="busPause">일시정지</button>
+      <button class="ghost" id="busClear">지우기</button>
+      <span class="muted" id="busCount"></span>
+    </div>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>시각</th><th>방향</th><th>ID</th><th>DLC</th><th>결과</th></tr></thead>
+        <tbody id="busRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 이벤트 로그 -->
+  <section class="view" id="view-events">
+    <h2>이벤트 로그</h2>
+    <p class="desc">파일 이름은 앱이 정합니다. 저장 시 자격증명과 개인정보는 걸러집니다.</p>
+    <div class="card">
+      <div class="row">
+        <button id="evSave">CSV 저장</button>
+        <button class="ghost" id="evList">저장된 로그 보기</button>
+        <span class="msg" id="evMsg"></span>
+      </div>
+    </div>
+    <div class="tblwrap short">
+      <table>
+        <thead><tr><th>시각</th><th>구분</th><th>내용</th></tr></thead>
+        <tbody id="evRows"></tbody>
+      </table>
+    </div>
+    <h3>저장된 로그 파일</h3>
+    <pre class="out" id="evFiles">—</pre>
+  </section>
+
+  <!-- 설정 -->
+  <section class="view" id="view-settings">
+    <h2>설정</h2>
+    <div class="card">
+      <h3 class="t0">전송 방식</h3>
+      <div class="row">
+        <label class="fld">방식
+          <select id="stTransport">
+            <option value="sim">시뮬레이터</option>
+            <option value="slcan">USB-CAN 어댑터 (slcan)</option>
+          </select>
+        </label>
+        <label class="fld">시리얼 포트<input id="stSerial" placeholder="COM3" /></label>
+        <label class="fld">비트레이트 (kbps)
+          <select id="stBitrate">
+            <option>125</option><option>250</option><option selected>500</option>
+            <option>800</option><option>1000</option>
+          </select>
+        </label>
+        <button id="stApply">적용</button>
+      </div>
+      <div class="msg" id="stMsg"></div>
+    </div>
+    <div class="card">
+      <h3 class="t0">게이트웨이</h3>
+      <div>상태: <b id="stBridge">—</b></div>
+      <div class="muted sm mt">제어 포트는 루프백에만 열리며, 앱이 기동할 때 만든
+        토큰으로 인증합니다.</div>
+    </div>
+    <div class="card">
+      <h3 class="t0">확장</h3>
+      <pre class="out" id="stPlugins">—</pre>
+      <div class="muted sm">서명을 검증하지 못한 확장은 불러오지 않습니다.</div>
+    </div>
+  </section>
+
+  <!-- 업데이트 -->
+  <section class="view" id="view-update">
+    <h2>소프트웨어 업데이트</h2>
+    <p class="desc">매니페스트 서명과 패키지 해시·서명을 확인한 뒤에만 설치 파일을
+      내려받습니다. 앱이 직접 실행하지 않습니다.</p>
+    <div class="card">
+      <div class="row">
+        <div>현재 버전: <b id="upCur">—</b></div>
+        <div>업데이트 서버: <span class="mono sm" id="upBase"></span></div>
+      </div>
+      <div class="row mt">
+        <button id="upCheck">업데이트 확인</button>
+        <button id="upApply" disabled>검증 후 내려받기</button>
+      </div>
+      <pre class="out mt" id="upOut">—</pre>
+    </div>
+  </section>
+
+  <!-- 정보 -->
+  <section class="view" id="view-about">
+    <h2>정보</h2>
+    <div class="card"><pre class="out tall" id="aboutOut">—</pre></div>
+    <div class="card">
+      <h3 class="t0">프레임 인증 (CANnula-SEC v1)</h3>
+      <table>
+        <thead><tr><th>봉투 ID</th><th>방향</th><th>구성</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">0x180</td><td>WS → 펌프</td><td>8바이트 프레임 5개 = 내부 ID·DLC·seq·timestamp·payload·HMAC(16)</td></tr>
+          <tr><td class="mono">0x280</td><td>펌프 → WS</td><td>동일</td></tr>
+        </tbody>
+      </table>
+      <div class="muted sm mt">검증 순서: 봉투 완성 → 시퀀스 증가 확인 → 신선도 창 확인
+        → HMAC-SHA256 상수 시간 비교. 하나라도 실패하면 폐기합니다.</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span id="statusLine">—</span>
+  <span class="spacer"></span>
+  <span id="frameStat"></span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

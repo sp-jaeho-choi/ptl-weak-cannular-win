@@ -1,0 +1,27 @@
+node_modules/
+dist/
+
+# 네이티브 빌드 산출물
+runtime/bin/*.dll
+runtime/bin/*.exe
+runtime/bin/*.so
+runtime/bin/CANnulaBridge
+native/*.lib
+native/*.o
+
+# 런타임에 쌓이는 것
+runtime/logs/*
+!runtime/logs/.gitkeep
+
+# 강화 빌드
+hardened/node_modules/
+hardened/dist/
+hardened/runtime/bin/*.exe
+hardened/runtime/bin/*.dll
+hardened/runtime/bin/CANnulaBridge
+hardened/runtime/logs/*
+!hardened/runtime/logs/.gitkeep
+
+# 인증 키 · 서명 비공개키 (배포·커밋 금지)
+hardened/runtime/config/cannula.key
+hardened/deploy/signing/*private*

@@ -1,0 +1,9 @@
+{
+  "comment": "확장·업데이트 서명을 검증할 공개키 목록. 비공개키는 배포 담당자만 보관한다.",
+  "keys": [
+    {
+      "id": "cannula-release-2026",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAlGSTXzOfy/YXbDQMHjTv3D9n+YlOC+kDMHPgConjLhs=\n-----END PUBLIC KEY-----\n"
+    }
+  ]
+}

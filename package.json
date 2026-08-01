@@ -1,0 +1,50 @@
+{
+  "name": "weak-cannula-workstation",
+  "version": "0.0.1",
+  "private": true,
+  "description": "CANnula Clinical Workstation (WEAK) — CAN 인퓨전 펌프 임상 워크스테이션 데스크톱 앱. 침투 테스트 실습용 취약 빌드.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "bridge": "runtime/bin/CANnulaBridge --verbose",
+    "native": "bash native/build.sh",
+    "native:win": "bash native/build.sh --win",
+    "dist:win": "electron-builder --win",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.special-partners.cannula-workstation",
+    "productName": "CANnula-Workstation-WEAK",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "renderer/**/*", "package.json"],
+    "extraResources": [
+      { "from": "runtime/config", "to": "config" },
+      { "from": "runtime/plugins", "to": "plugins" },
+      { "from": "runtime/docs", "to": "docs" },
+      { "from": "runtime/bin", "to": "bin", "filter": ["*.exe", "*.dll"] },
+      { "from": "runtime/firmware", "to": "firmware" }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": true,
+      "artifactName": "CANnula-Workstation-WEAK-Setup-${version}.exe",
+      "shortcutName": "CANnula Workstation (WEAK)"
+    },
+    "forceCodeSigning": false
+  }
+}

@@ -1,0 +1,1300 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>CANnula Clinical Workstation (WEAK)</title>
+  <!--
+    CANnula Clinical Workstation — CAN 인퓨전 펌프 임상 워크스테이션 (예시 앱).
+
+    ⚠  훈련용 샘플입니다. 실제 의료기기나 환자와 함께 사용하지 마세요.
+
+    이 앱은 침투 테스트 실습의 "대상 제품" 역할을 합니다. 공격을 대신 수행해
+    주는 버튼이나 미리 채워 둔 페이로드는 들어 있지 않습니다. 취약점은 제품
+    구현(장치 데이터 렌더링 / 로그 저장 / 진단 도구 / 업데이트 경로) 안에
+    그대로 남아 있고, 그것을 찾아내고 악용하는 일은 실습 참가자가 직접 합니다.
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --panel: #f5f7f9;
+      --panel-2: #eceff3;
+      --border: #d5dae0;
+      --text: #1b242e;
+      --muted: #66717f;
+      --accent: #16736b;
+      --accent-2: #0f5f58;
+      --danger: #cc2f42;
+      --warn: #c77700;
+      --ok: #1a8f5a;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ---- 상단 바 ---------------------------------------------------------- */
+    header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex: 0 0 auto;
+    }
+    header .brand { font-weight: 700; letter-spacing: .2px; }
+    .weak {
+      display: inline-block;
+      font-size: 10.5px; font-weight: 800; letter-spacing: .4px;
+      color: #fff; background: #d97706;
+      padding: 1px 6px; border-radius: 4px; vertical-align: middle;
+      margin-left: 6px;
+    }
+    header .ver, .badge {
+      font: 11px var(--mono); color: var(--muted);
+      border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+      background: #fff;
+    }
+    .badge.on  { color: #fff; background: var(--ok);     border-color: var(--ok); }
+    .badge.off { color: #fff; background: var(--danger); border-color: var(--danger); }
+    .badge.warn{ color: #fff; background: var(--warn);   border-color: var(--warn); }
+    header .spacer { flex: 1; }
+    header .whoami { color: var(--muted); font-size: 12px; }
+    header .whoami b { color: var(--text); }
+
+    /* ---- 공통 컨트롤 ------------------------------------------------------- */
+    input, select, textarea, button {
+      background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px 9px; font-size: 13px; outline: none;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+    button {
+      cursor: pointer; background: var(--accent); border-color: var(--accent);
+      color: #fff; font-weight: 600;
+    }
+    button:hover { filter: brightness(1.08); }
+    button.ghost { background: transparent; color: var(--text); border-color: var(--border); }
+    button.ghost:hover { border-color: var(--accent); color: var(--accent); filter: none; }
+    button.danger { background: var(--danger); border-color: var(--danger); }
+    button.warn { background: var(--warn); border-color: var(--warn); }
+    button:disabled { opacity: .4; cursor: not-allowed; filter: none; }
+    label.fld { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+    label.fld input, label.fld select { color: var(--text); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+
+    /* ---- 레이아웃 ---------------------------------------------------------- */
+    main { flex: 1; display: flex; min-height: 0; }
+    aside {
+      width: 224px; border-right: 1px solid var(--border);
+      background: var(--panel); display: flex; flex-direction: column;
+      min-height: 0; flex: 0 0 auto;
+    }
+    .nav { padding: 10px; display: flex; flex-direction: column; gap: 3px; overflow: auto; }
+    .nav button {
+      text-align: left; background: transparent; color: var(--text);
+      border: 1px solid transparent; font-weight: 500;
+    }
+    .nav button:hover { background: var(--panel-2); }
+    .nav button.active { background: #e2f0ee; border-color: #bcdcd8; color: var(--accent-2); }
+    .nav .sect {
+      color: var(--muted); font-size: 11px; text-transform: uppercase;
+      letter-spacing: .6px; padding: 12px 8px 4px;
+    }
+    aside .site { padding: 10px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+
+    section.view { flex: 1; min-width: 0; overflow: auto; padding: 16px 18px; display: none; }
+    section.view.active { display: block; }
+    h2 { margin: 0 0 4px; font-size: 16px; }
+    h3 { margin: 18px 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    p.desc { margin: 0 0 14px; color: var(--muted); max-width: 820px; }
+
+    .card {
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--panel); padding: 12px 14px; margin-bottom: 12px;
+    }
+    .grid { display: grid; gap: 12px; }
+    .grid.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    /* ---- 계측 타일 --------------------------------------------------------- */
+    .tile { border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 12px 14px; }
+    .tile .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .tile .v { font: 700 30px/1.15 var(--mono); margin-top: 4px; }
+    .tile .u { font-size: 12px; color: var(--muted); font-weight: 400; }
+    .tile.big .v { font-size: 44px; }
+    .tile.alarm { border-color: var(--danger); background: #fdf1f2; }
+    .tile.alarm .v { color: var(--danger); }
+
+    .bar { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; margin-top: 8px; }
+    .bar > i { display: block; height: 100%; background: var(--accent); }
+
+    #alarmBanner {
+      display: none; border: 1px solid var(--danger); background: #fdf1f2;
+      color: #8d1725; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;
+      font-weight: 600;
+    }
+    #alarmBanner.show { display: block; }
+    #alarmBanner .sub { font-weight: 400; color: #a3454f; font-size: 12px; margin-top: 3px; }
+
+    /* ---- 표 --------------------------------------------------------------- */
+    table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+    tbody tr:hover { background: var(--panel-2); }
+    td.mono, th.mono { font-family: var(--mono); }
+    .tblwrap { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+
+    pre.out {
+      font: 11.5px/1.5 var(--mono); background: #fff; border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px; max-height: 280px; overflow: auto;
+      white-space: pre-wrap; word-break: break-all; margin: 0;
+    }
+    .muted { color: var(--muted); }
+    .warnbox {
+      border: 1px solid #e6c98a; background: #fdf6e7; color: #7a5a13;
+      border-radius: 8px; padding: 9px 12px; font-size: 12px; margin-bottom: 12px;
+    }
+    canvas { width: 100%; height: 130px; display: block; }
+
+    /* ---- 로그인 ----------------------------------------------------------- */
+    #login {
+      position: fixed; inset: 0; background: #0e1a1f;
+      display: flex; align-items: center; justify-content: center; z-index: 50;
+    }
+    #login.hide { display: none; }
+    #login .box {
+      width: 380px; background: #fff; border-radius: 10px; padding: 26px 28px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.4);
+    }
+    #login h1 { margin: 0 0 2px; font-size: 19px; }
+    #login .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+    #login .fields { display: flex; flex-direction: column; gap: 10px; }
+    #login button { width: 100%; margin-top: 14px; padding: 9px; }
+    #login .err { color: var(--danger); font-size: 12px; margin-top: 10px; min-height: 16px; }
+    #login .hint { margin-top: 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 10px; }
+    #login .hint code { font-family: var(--mono); }
+
+    footer {
+      flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+      padding: 5px 14px; border-top: 1px solid var(--border);
+      background: var(--panel); font-size: 11.5px; color: var(--muted);
+    }
+    footer .spacer { flex: 1; }
+    #statusLine { font-family: var(--mono); }
+  </style>
+</head>
+<body>
+
+<!-- ===================== 로그인 ===================== -->
+<div id="login">
+  <div class="box">
+    <h1>CANnula Workstation <span class="weak">WEAK</span></h1>
+    <div class="sub">임상 워크스테이션 로그인</div>
+    <div class="fields">
+      <label class="fld">사용자
+        <input id="lgUser" autocomplete="off" placeholder="nurse.kim" />
+      </label>
+      <label class="fld">비밀번호
+        <input id="lgPass" type="password" autocomplete="off" />
+      </label>
+    </div>
+    <button id="lgGo">로그인</button>
+    <div class="err" id="lgErr"></div>
+    <div class="hint" id="lgHint"></div>
+  </div>
+</div>
+
+<!-- ===================== 상단 바 ===================== -->
+<header>
+  <span class="brand">CANnula Workstation<span class="weak">WEAK</span></span>
+  <span class="ver" id="hdrVer">v0.0.1</span>
+  <span class="badge" id="hdrBridge">게이트웨이 —</span>
+  <span class="badge" id="hdrTransport">전송 —</span>
+  <span class="badge" id="hdrDevice">장치 —</span>
+  <span class="spacer"></span>
+  <span class="whoami" id="hdrWho"></span>
+  <button class="ghost" id="hdrLogout">로그아웃</button>
+</header>
+
+<main>
+  <aside>
+    <div class="nav" id="nav">
+      <div class="sect">모니터링</div>
+      <button data-view="dash" class="active">대시보드</button>
+      <button data-view="alarms">알람</button>
+      <div class="sect">처방</div>
+      <button data-view="rx">주입 설정</button>
+      <button data-view="patient">환자 정보</button>
+      <div class="sect">서비스</div>
+      <button data-view="diag" data-role="tech">진단 · CAN 콘솔</button>
+      <button data-view="fw" data-role="tech">펌웨어 전송</button>
+      <button data-view="events">이벤트 로그</button>
+      <div class="sect">시스템</div>
+      <button data-view="settings">설정</button>
+      <button data-view="update">소프트웨어 업데이트</button>
+      <button data-view="about">정보</button>
+    </div>
+    <div class="spacer" style="flex:1"></div>
+    <div class="site" id="siteInfo"></div>
+  </aside>
+
+  <!-- ===================== 대시보드 ===================== -->
+  <section class="view active" id="view-dash">
+    <h2>대시보드</h2>
+    <p class="desc">펌프가 1초 주기로 보내는 텔레메트리(0x200)와 상태(0x202)를 표시합니다.</p>
+
+    <div id="alarmBanner"></div>
+
+    <div class="grid g4">
+      <div class="tile big"><div class="k">주입 속도</div>
+        <div class="v"><span id="tRate">—</span> <span class="u">mL/h</span></div></div>
+      <div class="tile"><div class="k">지시 속도</div>
+        <div class="v"><span id="tSet">—</span> <span class="u">mL/h</span></div></div>
+      <div class="tile"><div class="k">계산 용량</div>
+        <div class="v"><span id="tDose">—</span> <span class="u">mcg/kg/min</span></div></div>
+      <div class="tile"><div class="k">배터리</div>
+        <div class="v"><span id="tBatt">—</span> <span class="u">%</span></div>
+        <div class="bar"><i id="battBar" style="width:0%"></i></div></div>
+    </div>
+
+    <div class="grid g3" style="margin-top:12px">
+      <div class="tile"><div class="k">주입량 / VTBI</div>
+        <div class="v"><span id="tInf">—</span><span class="u"> / <span id="tVtbi">—</span> mL</span></div>
+        <div class="bar"><i id="volBar" style="width:0%"></i></div></div>
+      <div class="tile"><div class="k">잔량</div>
+        <div class="v"><span id="tRem">—</span> <span class="u">mL</span></div></div>
+      <div class="tile"><div class="k">상태 / 약물</div>
+        <div class="v" style="font-size:18px" id="tState">—</div>
+        <div class="muted" id="tDrug" style="font-size:12px"></div></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="k muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">최근 5분 주입 속도</div>
+      <canvas id="chart" width="900" height="130"></canvas>
+    </div>
+
+    <div class="row">
+      <button id="btnStart">주입 시작</button>
+      <button class="ghost" id="btnPause">일시정지</button>
+      <button class="danger" id="btnStop">정지</button>
+      <span style="flex:1"></span>
+      <label class="fld">볼루스 (mL)<input id="bolusVol" type="number" value="5" min="0" style="width:100px" /></label>
+      <button class="warn" id="btnBolus">볼루스 주입</button>
+    </div>
+
+    <h3>가드레일 (DERS)</h3>
+    <div class="card">
+      <div class="row">
+        <div>상태: <b id="dersState">—</b></div>
+        <div>경고 상한: <b id="dersSoft">—</b> mL/h</div>
+        <div>절대 상한: <b id="dersHard">—</b> mL/h</div>
+        <div>안전 인터록: <b id="dersLock">—</b></div>
+        <div>권한 레벨: <b id="dersAuth">—</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 알람 ===================== -->
+  <section class="view" id="view-alarms">
+    <h2>알람</h2>
+    <p class="desc">펌프가 보낸 알람 이벤트(0x201)입니다. 확인(ACK)하면 0x101 프레임으로 무음화 요청을 보냅니다.</p>
+    <div class="row" style="margin-bottom:12px">
+      <button id="btnAck">현재 알람 확인</button>
+      <button class="ghost" id="btnAckAll">전체 무음화</button>
+      <button class="ghost" id="btnAlarmClear">목록 지우기</button>
+    </div>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>시각</th><th>코드</th><th>내용</th><th>펌프 상태</th><th class="mono">원시 데이터</th></tr></thead>
+        <tbody id="alarmRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== 주입 설정 ===================== -->
+  <section class="view" id="view-rx">
+    <h2>주입 설정</h2>
+    <p class="desc">약물·속도·총량을 정해 펌프로 내려보냅니다 (0x100 SET_RATE).</p>
+
+    <div class="card">
+      <div class="grid g4">
+        <label class="fld">약물
+          <select id="rxDrug"></select>
+        </label>
+        <label class="fld">주입 속도 (mL/h)
+          <input id="rxRate" type="number" value="20" min="0" max="65535" />
+        </label>
+        <label class="fld">총 주입량 VTBI (mL)
+          <input id="rxVtbi" type="number" value="500" min="0" max="65535" />
+        </label>
+        <label class="fld">환자 체중 (kg)
+          <input id="rxWeight" type="number" value="70" min="0" max="255" />
+        </label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="card" style="flex:1;margin:0;background:#fff">
+          <div class="muted" style="font-size:11px">계산 결과</div>
+          <div id="rxCalc" style="font-family:var(--mono);margin-top:4px">—</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="rxSend">펌프로 전송</button>
+        <button class="ghost" id="rxRead">현재 설정 읽기</button>
+        <span style="flex:1"></span>
+        <label class="fld">기사용 해제 코드
+          <input id="rxOverride" placeholder="가드레일 해제 시 입력" style="width:200px" />
+        </label>
+        <button class="warn" id="rxOverrideGo">상한 해제</button>
+      </div>
+      <div id="rxVerdict" style="margin-top:10px"></div>
+    </div>
+
+    <h3>약물 라이브러리</h3>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>ID</th><th>이름</th><th>농도</th><th>최소</th><th>최대</th><th>고위험</th></tr></thead>
+        <tbody id="drugRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== 환자 정보 ===================== -->
+  <section class="view" id="view-patient">
+    <h2>환자 정보</h2>
+    <p class="desc">이 워크스테이션에 배정된 환자입니다. 입력한 값은 세션과 이벤트 로그에 함께 기록됩니다.</p>
+    <div class="card">
+      <div class="grid g3">
+        <label class="fld">환자 ID<input id="ptId" value="12345" /></label>
+        <label class="fld">이름<input id="ptName" value="홍길동" /></label>
+        <label class="fld">병실 / 침상<input id="ptBed" value="ICU-3 / 07" /></label>
+        <label class="fld">체중 (kg)<input id="ptWeight" type="number" value="70" /></label>
+        <label class="fld">신장 (cm)<input id="ptHeight" type="number" value="172" /></label>
+        <label class="fld">알레르기<input id="ptAllergy" value="페니실린" /></label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="ptSave">저장</button>
+        <span class="muted" id="ptSaved"></span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted" style="font-size:11px">현재 배정</div>
+      <div id="ptCard" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <!-- ===================== 진단 · CAN 콘솔 ===================== -->
+  <section class="view" id="view-diag">
+    <h2>진단 · CAN 콘솔</h2>
+    <p class="desc">서비스 기사용 화면입니다. 버스에 흐르는 프레임을 보고, 펌프의 서비스 콘솔에 명령을 보냅니다.</p>
+
+    <div class="card">
+      <div class="row">
+        <label class="fld">서비스 명령
+          <input id="svcCmd" value="id" style="width:160px" />
+        </label>
+        <label class="fld">인자
+          <input id="svcArgs" placeholder="예: rate 20" style="width:240px" />
+        </label>
+        <button id="svcGo">전송 (0x130)</button>
+        <span style="flex:1"></span>
+        <button class="ghost" id="svcHelp">help</button>
+        <button class="ghost" id="svcVer">ver</button>
+        <button class="ghost" id="svcGet">get</button>
+      </div>
+      <h3>펌프 응답 (0x203)</h3>
+      <div id="svcOut" class="card" style="background:#fff;min-height:40px;font-family:var(--mono);margin:0"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">메모리 조회</h3>
+      <div class="row">
+        <label class="fld">주소<input id="memAddr" value="0x08000000" style="width:140px" /></label>
+        <label class="fld">길이<input id="memLen" type="number" value="64" style="width:90px" /></label>
+        <button id="memGo">덤프 요청 (0x110 / CMD 0x06)</button>
+      </div>
+      <pre class="out" id="memOut" style="margin-top:10px">—</pre>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">원시 프레임 전송</h3>
+      <div class="row">
+        <label class="fld">ID (hex)<input id="txId" value="100" style="width:90px" /></label>
+        <label class="fld">DLC<input id="txDlc" type="number" value="8" min="0" max="8" style="width:70px" /></label>
+        <label class="fld">데이터 (hex)<input id="txData" value="1400F401010046 00" style="width:280px;font-family:var(--mono)" placeholder="예: 1400F4010100 4600" /></label>
+        <button id="txGo">전송</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">시스템 진단 도구</h3>
+      <div class="row">
+        <label class="fld">도구
+          <select id="diagTool"></select>
+        </label>
+        <label class="fld">추가 옵션
+          <input id="diagExtra" placeholder="필요하면 옵션을 덧붙입니다" style="width:300px" />
+        </label>
+        <button id="diagGo">실행</button>
+      </div>
+      <pre class="out" id="diagOut" style="margin-top:10px">—</pre>
+    </div>
+
+    <h3>버스 트래픽</h3>
+    <div class="row" style="margin-bottom:8px">
+      <label class="fld">ID 필터 (hex, 비우면 전체)<input id="busFilter" style="width:120px" /></label>
+      <button class="ghost" id="busPause">일시정지</button>
+      <button class="ghost" id="busClear">지우기</button>
+      <span class="muted" id="busCount"></span>
+    </div>
+    <div class="tblwrap" id="busWrap">
+      <table>
+        <thead><tr><th>t</th><th>방향</th><th class="mono">ID</th><th>DLC</th><th class="mono">데이터</th><th>해석</th></tr></thead>
+        <tbody id="busRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== 펌웨어 전송 ===================== -->
+  <section class="view" id="view-fw">
+    <h2>펌웨어 전송</h2>
+    <p class="desc">펌프 펌웨어 이미지를 CAN 으로 내려보냅니다 (0x140 FW_UPDATE). 48바이트 청크로 나누어 전송합니다.</p>
+
+    <div class="warnbox">
+      전송 중에는 펌프의 주입이 멈추고 안전 기능이 해제됩니다. 환자에게서 라인을 분리한 뒤 진행하십시오.
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <label class="fld">설치된 이미지
+          <select id="fwList" style="min-width:280px"></select>
+        </label>
+        <button class="ghost" id="fwLoad">불러오기</button>
+        <button class="ghost" id="fwPick">파일 선택…</button>
+      </div>
+      <div id="fwInfo" class="card" style="background:#fff;margin-top:12px">—</div>
+      <div class="row">
+        <button id="fwSend" disabled>펌프로 전송</button>
+        <span class="muted" id="fwProg"></span>
+      </div>
+      <div class="bar" style="margin-top:8px"><i id="fwBar" style="width:0%"></i></div>
+    </div>
+  </section>
+
+  <!-- ===================== 이벤트 로그 ===================== -->
+  <section class="view" id="view-events">
+    <h2>이벤트 로그</h2>
+    <p class="desc">이 세션에서 일어난 일을 시간순으로 남깁니다. 펌프별로 파일을 나누어 저장합니다.</p>
+
+    <div class="card">
+      <div class="row">
+        <label class="fld">저장 파일 이름
+          <input id="evName" style="width:340px;font-family:var(--mono)" />
+        </label>
+        <button id="evSave">CSV 저장</button>
+        <button class="ghost" id="evList">저장된 로그 보기</button>
+        <span class="muted" id="evMsg"></span>
+      </div>
+    </div>
+
+    <div class="tblwrap" style="max-height:300px">
+      <table>
+        <thead><tr><th>시각</th><th>구분</th><th>내용</th></tr></thead>
+        <tbody id="evRows"></tbody>
+      </table>
+    </div>
+
+    <h3>저장된 로그 파일</h3>
+    <pre class="out" id="evFiles">—</pre>
+  </section>
+
+  <!-- ===================== 설정 ===================== -->
+  <section class="view" id="view-settings">
+    <h2>설정</h2>
+    <p class="desc">CAN 어댑터와 게이트웨이 연결 방식을 정합니다.</p>
+
+    <div class="card">
+      <h3 style="margin-top:0">전송 방식</h3>
+      <div class="row">
+        <label class="fld">방식
+          <select id="stTransport">
+            <option value="sim">시뮬레이터 (하드웨어 없음)</option>
+            <option value="slcan">USB-CAN 어댑터 (slcan)</option>
+            <option value="udp">가상 CAN (UDP)</option>
+          </select>
+        </label>
+        <label class="fld">시리얼 포트
+          <input id="stSerial" placeholder="COM3 / /dev/ttyACM0" style="width:180px" />
+        </label>
+        <label class="fld">비트레이트 (kbps)
+          <select id="stBitrate">
+            <option>125</option><option>250</option><option selected>500</option>
+            <option>800</option><option>1000</option>
+          </select>
+        </label>
+        <button id="stApply">적용</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">게이트웨이</h3>
+      <div class="row">
+        <div>상태: <b id="stBridge">—</b></div>
+        <div>실행 파일: <span class="mono" id="stExe" style="font-family:var(--mono);font-size:11.5px"></span></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost" id="stReconnect">다시 연결</button>
+        <button class="ghost" id="stRestart">게이트웨이 재시작</button>
+        <button class="ghost" id="stReset">엔진 상태 초기화</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">사이트 설정 파일</h3>
+      <div class="muted" style="font-size:11.5px;font-family:var(--mono)" id="stCfgPath"></div>
+      <pre class="out" id="stCfg" style="margin-top:8px">—</pre>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">불러온 확장</h3>
+      <pre class="out" id="stPlugins">—</pre>
+    </div>
+  </section>
+
+  <!-- ===================== 소프트웨어 업데이트 ===================== -->
+  <section class="view" id="view-update">
+    <h2>소프트웨어 업데이트</h2>
+    <p class="desc">워크스테이션 소프트웨어의 새 버전을 확인하고 적용합니다.</p>
+    <div class="card">
+      <div class="row">
+        <div>현재 버전: <b id="upCur">—</b></div>
+        <div>업데이트 서버: <span style="font-family:var(--mono);font-size:11.5px" id="upBase"></span></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="upCheck">업데이트 확인</button>
+        <button id="upApply" disabled>내려받아 적용</button>
+      </div>
+      <pre class="out" id="upOut" style="margin-top:12px">—</pre>
+    </div>
+  </section>
+
+  <!-- ===================== 정보 ===================== -->
+  <section class="view" id="view-about">
+    <h2>정보</h2>
+    <div class="warnbox">
+      이 빌드는 <b>보안 교육·시연용 예시 앱</b>입니다. 실제 의료기기·환자·병원
+      네트워크와 함께 사용하지 마십시오.
+    </div>
+    <div class="card"><pre class="out" id="aboutOut" style="max-height:none">—</pre></div>
+    <div class="card">
+      <h3 style="margin-top:0">CAN 메시지셋</h3>
+      <table>
+        <thead><tr><th class="mono">ID</th><th>방향</th><th>내용</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">0x100</td><td>WS → 펌프</td><td>SET_RATE (rate, vtbi, drug_id, weight)</td></tr>
+          <tr><td class="mono">0x101</td><td>WS → 펌프</td><td>ALARM_ACK / SILENCE</td></tr>
+          <tr><td class="mono">0x110</td><td>WS → 펌프</td><td>PUMP_CONTROL (start/stop/bolus/dump)</td></tr>
+          <tr><td class="mono">0x120</td><td>WS → 펌프</td><td>AUTH_REQUEST</td></tr>
+          <tr><td class="mono">0x130</td><td>WS → 펌프</td><td>DEBUG_CMD (서비스 콘솔, 64바이트/8프레임)</td></tr>
+          <tr><td class="mono">0x140</td><td>WS → 펌프</td><td>FW_UPDATE (청크 56바이트/7프레임)</td></tr>
+          <tr><td class="mono">0x200</td><td>펌프 → WS</td><td>TELEMETRY (rate, infused, remaining, batt, alarm)</td></tr>
+          <tr><td class="mono">0x201</td><td>펌프 → WS</td><td>ALARM_EVENT</td></tr>
+          <tr><td class="mono">0x202</td><td>펌프 → WS</td><td>STATUS (state, auth, ders, bypass)</td></tr>
+          <tr><td class="mono">0x203</td><td>펌프 → WS</td><td>DEBUG_RESPONSE (ASCII, 이어붙임)</td></tr>
+          <tr><td class="mono">0x300</td><td>펌프 → WS</td><td>MEMORY_DUMP</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span id="statusLine">—</span>
+  <span class="spacer"></span>
+  <span id="frameStat"></span>
+</footer>
+
+<script>
+// ---------------------------------------------------------------------------
+//  렌더러. nodeIntegration 이 켜져 있어 Node 모듈을 바로 쓴다.
+// ---------------------------------------------------------------------------
+const { ipcRenderer } = require('electron')
+const path = require('path')
+
+const $ = (id) => document.getElementById(id)
+
+let RT = {}                 // app:runtime 결과
+let S = {}                  // 게이트웨이 상태 스냅샷
+let session = null          // { user, role }
+let frames = []             // 버스 트래픽
+let busPaused = false
+let events = []             // 이벤트 로그
+let alarms = []
+let rateHistory = []
+let fwImage = null
+
+const DRUGS = [
+  { id: 1, name: 'Morphine',   conc: 1.0,    min: 1,   max: 50,   high: true },
+  { id: 2, name: 'Fentanyl',   conc: 0.05,   min: 10,  max: 200,  high: true },
+  { id: 3, name: 'Insulin',    conc: 1.0,    min: 1,   max: 10,   high: true },
+  { id: 4, name: 'Heparin',    conc: 1000.0, min: 100, max: 1000, high: true },
+  { id: 5, name: 'Dopamine',   conc: 400.0,  min: 2,   max: 20,   high: true },
+  { id: 6, name: 'Debug_Drug', conc: 999.0,  min: 0,   max: 9999, high: false }
+]
+
+const ID_NAMES = {
+  0x100: 'SET_RATE', 0x101: 'ALARM_ACK', 0x110: 'PUMP_CONTROL',
+  0x120: 'AUTH_REQUEST', 0x130: 'DEBUG_CMD', 0x140: 'FW_UPDATE',
+  0x200: 'TELEMETRY', 0x201: 'ALARM_EVENT', 0x202: 'STATUS',
+  0x203: 'DEBUG_RESPONSE', 0x300: 'MEMORY_DUMP', 0x666: '—'
+}
+
+// --- 이벤트 로그 ------------------------------------------------------------
+function logEvent(kind, text) {
+  const e = { t: new Date(), kind, text }
+  events.unshift(e)
+  if (events.length > 800) events.pop()
+  ipcRenderer.invoke('app:log', `[${kind}] ${text}`)
+  if ($('view-events').classList.contains('active')) renderEvents()
+}
+
+function renderEvents() {
+  $('evRows').innerHTML = events.slice(0, 300).map((e) =>
+    `<tr><td class="mono">${e.t.toLocaleTimeString()}</td><td>${e.kind}</td><td>${e.text}</td></tr>`
+  ).join('')
+}
+
+// --- 로그인 ----------------------------------------------------------------
+function accounts() {
+  // 계정은 사이트 설정 파일에서 읽는다. "비밀번호:역할" 형식.
+  const users = (RT.config && RT.config.users) || {}
+  const out = {}
+  for (const [u, v] of Object.entries(users)) {
+    const [pw, role] = String(v).split(':')
+    out[u] = { pw, role: role || 'nurse' }
+  }
+  return out
+}
+
+function doLogin() {
+  const u = $('lgUser').value.trim()
+  const p = $('lgPass').value
+  const acc = accounts()
+  if (acc[u] && acc[u].pw === p) {
+    session = { user: u, role: acc[u].role }
+    localStorage.setItem('cannula.session', JSON.stringify(session))
+    $('login').classList.add('hide')
+    applySession()
+    logEvent('auth', `로그인: ${u} (${session.role})`)
+  } else {
+    $('lgErr').textContent = '사용자 또는 비밀번호가 올바르지 않습니다.'
+  }
+}
+
+function applySession() {
+  if (!session) return
+  $('hdrWho').innerHTML = `<b>${session.user}</b> · ${session.role}`
+  // 역할에 맞지 않는 메뉴는 숨긴다.
+  document.querySelectorAll('#nav button[data-role]').forEach((b) => {
+    const need = b.dataset.role
+    const ok = session.role === 'admin' || session.role === need
+    b.style.display = ok ? '' : 'none'
+  })
+}
+
+$('lgGo').onclick = doLogin
+$('lgPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin() })
+$('hdrLogout').onclick = () => {
+  session = null
+  localStorage.removeItem('cannula.session')
+  $('login').classList.remove('hide')
+  $('lgErr').textContent = ''
+}
+
+// --- 화면 전환 -------------------------------------------------------------
+document.querySelectorAll('#nav button').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('#nav button').forEach((x) => x.classList.remove('active'))
+    b.classList.add('active')
+    document.querySelectorAll('section.view').forEach((v) => v.classList.remove('active'))
+    $('view-' + b.dataset.view).classList.add('active')
+    if (b.dataset.view === 'events') { renderEvents(); }
+    if (b.dataset.view === 'about') renderAbout()
+  }
+})
+
+// --- 상태 반영 -------------------------------------------------------------
+function drugLabel(id) {
+  const custom = RT.drugLabels || {}
+  if (custom[id]) return custom[id]
+  const d = DRUGS.find((x) => x.id === Number(id))
+  return d ? d.name : `ID ${id}`
+}
+
+function alarmLabel(code, fallback) {
+  const custom = RT.alarmLabels || {}
+  if (custom[code]) return custom[code]
+  return fallback || `코드 ${code}`
+}
+
+function applyState(s) {
+  S = s
+
+  // 화면에 뿌리는 속도는 장치가 알려 준 표시용 값을 쓴다.
+  $('tRate').textContent = s.rateDisplay
+  $('tSet').textContent  = s.setpoint
+  $('tDose').textContent = s.dose
+  $('tBatt').textContent = s.battery
+  $('battBar').style.width = Math.max(0, Math.min(100, s.battery)) + '%'
+  $('tInf').textContent  = s.infused
+  $('tVtbi').textContent = s.vtbi
+  $('tRem').textContent  = s.remaining
+  $('tState').textContent = s.stateLabel
+  $('tDrug').textContent = drugLabel(s.drugId) + ` (ID ${s.drugId})`
+
+  const pct = s.vtbi > 0 ? Math.min(100, (s.infused / s.vtbi) * 100) : 0
+  $('volBar').style.width = pct + '%'
+
+  $('dersState').textContent = s.dersEnabled ? '작동 중' : '해제됨'
+  $('dersSoft').textContent  = s.dersSoftMax
+  $('dersHard').textContent  = s.dersHardMax
+  $('dersLock').textContent  = s.safetyBypassed ? '우회됨' : '정상'
+  $('dersAuth').textContent  = s.authLevel
+
+  // 알람 배너. 장치가 준 알람 문구를 그대로 넣는다.
+  const banner = $('alarmBanner')
+  if (s.alarmCode && s.alarmCode !== 0) {
+    banner.classList.add('show')
+    banner.innerHTML = `⚠ ${alarmLabel(s.alarmCode, s.alarm)}` +
+      `<div class="sub">펌프 ${s.deviceId} · 상태 ${s.stateLabel} · 속도 ${s.rateDisplay} mL/h</div>`
+  } else {
+    banner.classList.remove('show')
+    banner.innerHTML = ''
+  }
+
+  $('hdrDevice').textContent = '장치 ' + s.deviceId
+  syncLogName()
+  $('statusLine').textContent = s.statusLine || '—'
+  $('frameStat').textContent = `rx ${s.framesRx} · tx ${s.framesTx} · err ${s.busErrors}`
+
+  // 서비스 콘솔 응답 표시
+  if (s.serviceText) $('svcOut').innerHTML = s.serviceText
+
+  // 그래프용 이력
+  rateHistory.push(s.rate)
+  if (rateHistory.length > 300) rateHistory.shift()
+  drawChart()
+}
+
+function drawChart() {
+  const c = $('chart')
+  const ctx = c.getContext('2d')
+  const w = c.width, h = c.height
+  ctx.clearRect(0, 0, w, h)
+  ctx.strokeStyle = '#e2e6ea'
+  ctx.lineWidth = 1
+  for (let i = 0; i <= 4; i++) {
+    const y = (h - 20) * i / 4 + 10
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
+  }
+  if (rateHistory.length < 2) return
+  const max = Math.max(50, ...rateHistory)
+  ctx.strokeStyle = '#16736b'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  rateHistory.forEach((v, i) => {
+    const x = i / (rateHistory.length - 1) * (w - 4) + 2
+    const y = h - 10 - (v / max) * (h - 20)
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)
+  })
+  ctx.stroke()
+  ctx.fillStyle = '#66717f'
+  ctx.font = '10px monospace'
+  ctx.fillText(String(max) + ' mL/h', 4, 10)
+}
+
+// --- 게이트웨이 이벤트 -----------------------------------------------------
+ipcRenderer.on('bridge:state', (_e, s) => applyState(s))
+
+ipcRenderer.on('bridge:status', (_e, st) => {
+  const b = $('hdrBridge')
+  b.textContent = '게이트웨이 ' + (st.up ? '연결' : '끊김')
+  b.className = 'badge ' + (st.up ? 'on' : 'off')
+  $('stBridge').textContent = st.up ? `연결됨 (${st.host}:${st.port})` : `끊김 ${st.error || ''}`
+})
+
+ipcRenderer.on('bridge:hello', (_e, h) => {
+  $('hdrTransport').textContent = '전송 ' + h.transport
+  $('stTransport').value = h.transport
+  if (h.serial) $('stSerial').value = h.serial
+  if (h.bitrate) $('stBitrate').value = String(h.bitrate)
+  logEvent('bus', `게이트웨이 연결: ${h.engine}`)
+})
+
+ipcRenderer.on('bridge:log', (_e, msg) => logEvent('bus', msg))
+
+ipcRenderer.on('bridge:frame', (_e, f) => {
+  if (busPaused) return
+  f.at = new Date()
+  frames.unshift(f)
+  if (frames.length > 400) frames.pop()
+
+  if (f.dir === 'rx' && f.id === 0x201) {
+    const raw = f.data
+    const code = parseInt(raw.slice(0, 2) || '0', 16)
+    const state = parseInt(raw.slice(2, 4) || '0', 16)
+    const tail = hexToAscii(raw.slice(4))
+    alarms.unshift({ t: new Date(), code, state, tail, raw })
+    if (alarms.length > 200) alarms.pop()
+    renderAlarms()
+    logEvent('alarm', `알람 ${code} (상태 ${state})`)
+  }
+
+  if (f.dir === 'rx' && f.id === 0x300) collectDump(f)
+
+  if ($('view-diag').classList.contains('active')) renderBus()
+})
+
+// --- 프레임 해석 -----------------------------------------------------------
+function hexToAscii(hex) {
+  let s = ''
+  for (let i = 0; i + 1 < hex.length; i += 2) {
+    const b = parseInt(hex.substr(i, 2), 16)
+    s += (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : (b === 0 ? '' : '.')
+  }
+  return s
+}
+
+function u16(hex, byteOff) {
+  const lo = parseInt(hex.substr(byteOff * 2, 2) || '0', 16)
+  const hi = parseInt(hex.substr(byteOff * 2 + 2, 2) || '0', 16)
+  return lo | (hi << 8)
+}
+
+function decodeFrame(f) {
+  const d = f.data
+  switch (f.id) {
+    case 0x100: return `rate=${u16(d, 0)} vtbi=${u16(d, 2)} drug=${u16(d, 4)} wt=${parseInt(d.substr(12, 2) || '0', 16)}`
+    case 0x101: return `alarm=${parseInt(d.substr(0, 2) || '0', 16)} silence=${parseInt(d.substr(2, 2) || '0', 16)}`
+    case 0x110: return `cmd=0x${d.substr(0, 2)} token=0x${d.substr(2, 2)}`
+    case 0x120: return `token=0x${d.substr(0, 2)}`
+    case 0x130: return `"${hexToAscii(d)}"`
+    case 0x140: return `chunk 조각`
+    case 0x200: return `rate=${u16(d, 0)} inf=${u16(d, 2)} rem=${u16(d, 4)} batt=${parseInt(d.substr(12, 2) || '0', 16)} alarm=${parseInt(d.substr(14, 2) || '0', 16)}`
+    case 0x201: return `alarm=${parseInt(d.substr(0, 2) || '0', 16)} tag="${hexToAscii(d.slice(4))}"`
+    case 0x202: return `state=${parseInt(d.substr(0, 2) || '0', 16)} auth=${parseInt(d.substr(2, 2) || '0', 16)} ders=${parseInt(d.substr(4, 2) || '0', 16)} bypass=${parseInt(d.substr(6, 2) || '0', 16)}`
+    case 0x203: return `"${hexToAscii(d)}"`
+    case 0x300: return `"${hexToAscii(d)}"`
+    default: return ''
+  }
+}
+
+function renderBus() {
+  const filt = $('busFilter').value.trim()
+  const want = filt ? parseInt(filt, 16) : null
+  const list = frames.filter((f) => want === null || f.id === want).slice(0, 250)
+  $('busCount').textContent = `${frames.length} 프레임 수집`
+  $('busRows').innerHTML = list.map((f) => {
+    const name = ID_NAMES[f.id] || ''
+    const clock = f.at ? f.at.toLocaleTimeString('en-GB') +
+      '.' + String(f.at.getMilliseconds()).padStart(3, '0') : '—'
+    return `<tr>
+      <td class="mono">${clock}</td>
+      <td>${f.dir === 'rx' ? '수신' : '송신'}</td>
+      <td class="mono">0x${f.id.toString(16).toUpperCase().padStart(3, '0')} ${name}</td>
+      <td>${f.dlc}</td>
+      <td class="mono">${f.data}</td>
+      <td>${decodeFrame(f)}</td>
+    </tr>`
+  }).join('')
+}
+
+$('busPause').onclick = () => {
+  busPaused = !busPaused
+  $('busPause').textContent = busPaused ? '재개' : '일시정지'
+}
+$('busClear').onclick = () => { frames = []; renderBus() }
+$('busFilter').oninput = renderBus
+
+// --- 알람 -----------------------------------------------------------------
+function renderAlarms() {
+  $('alarmRows').innerHTML = alarms.slice(0, 200).map((a) => `<tr>
+      <td class="mono">${a.t.toLocaleTimeString()}</td>
+      <td class="mono">${a.code}</td>
+      <td>${alarmLabel(a.code, S.alarm || '')}</td>
+      <td>${a.state}</td>
+      <td class="mono">${a.raw}</td>
+    </tr>`).join('')
+}
+
+$('btnAck').onclick = () => {
+  ipcRenderer.invoke('bridge:cmd', { op: 'ack', alarm: S.alarmCode || 0 })
+  logEvent('alarm', `알람 확인 (코드 ${S.alarmCode || 0})`)
+}
+$('btnAckAll').onclick = () => {
+  ipcRenderer.invoke('bridge:cmd', { op: 'ack', alarm: 0xFF })
+  logEvent('alarm', '전체 무음화 요청')
+}
+$('btnAlarmClear').onclick = () => { alarms = []; renderAlarms() }
+
+// --- 대시보드 제어 --------------------------------------------------------
+$('btnStart').onclick = () => {
+  ipcRenderer.invoke('bridge:cmd', { op: 'control', cmd: 0x01, token: 0x01 })
+  logEvent('rx', '주입 시작')
+}
+$('btnPause').onclick = () => {
+  ipcRenderer.invoke('bridge:cmd', { op: 'control', cmd: 0x02, token: 0x01 })
+  logEvent('rx', '일시정지')
+}
+$('btnStop').onclick = () => {
+  ipcRenderer.invoke('bridge:cmd', { op: 'control', cmd: 0x02, token: 0x01 })
+  logEvent('rx', '정지')
+}
+$('btnBolus').onclick = () => {
+  const v = Number($('bolusVol').value)
+  ipcRenderer.invoke('bridge:cmd', { op: 'control', cmd: 0x03, token: 0x01, arg: v })
+  logEvent('rx', `볼루스 ${v} mL`)
+}
+
+// --- 주입 설정 ------------------------------------------------------------
+function fillDrugs() {
+  $('rxDrug').innerHTML = DRUGS.map((d) =>
+    `<option value="${d.id}">${drugLabel(d.id)}</option>`).join('')
+  $('drugRows').innerHTML = DRUGS.map((d) => `<tr>
+      <td class="mono">${d.id}</td><td>${drugLabel(d.id)}</td>
+      <td class="mono">${d.conc} mg/mL</td>
+      <td class="mono">${d.min}</td><td class="mono">${d.max}</td>
+      <td>${d.high ? '예' : '아니오'}</td>
+    </tr>`).join('')
+}
+
+function rxRecalc() {
+  const rate = Number($('rxRate').value)
+  const wt = Number($('rxWeight').value)
+  const did = Number($('rxDrug').value)
+  const drug = DRUGS.find((d) => d.id === did) || DRUGS[0]
+  const mgh = rate * drug.conc
+  const perKgMin = wt > 0 ? (mgh * 1000 / 60 / wt) : Infinity
+  const hours = rate > 0 ? (Number($('rxVtbi').value) / rate) : Infinity
+
+  $('rxCalc').textContent =
+    `${mgh.toFixed(2)} mg/h · ${isFinite(perKgMin) ? perKgMin.toFixed(2) : '∞'} mcg/kg/min · ` +
+    `예상 소요 ${isFinite(hours) ? hours.toFixed(1) + ' h' : '∞'}`
+
+  const hard = S.dersHardMax || 999
+  const soft = S.dersSoftMax || 200
+  const v = $('rxVerdict')
+  if (rate > hard) {
+    v.innerHTML = `<span style="color:var(--danger)">가드레일: 절대 상한 ${hard} mL/h 초과 — 기사용 해제 코드가 필요합니다.</span>`
+  } else if (rate > soft) {
+    v.innerHTML = `<span style="color:var(--warn)">가드레일: 경고 상한 ${soft} mL/h 초과 — 처방을 다시 확인하십시오.</span>`
+  } else if (rate > drug.max) {
+    v.innerHTML = `<span style="color:var(--warn)">약물 라이브러리 최대 ${drug.max} mL/h 초과.</span>`
+  } else {
+    v.innerHTML = `<span style="color:var(--ok)">가드레일: 통과</span>`
+  }
+}
+;['rxRate', 'rxVtbi', 'rxWeight'].forEach((id) => $(id).oninput = rxRecalc)
+$('rxDrug').onchange = rxRecalc
+
+$('rxSend').onclick = () => {
+  const rate = Number($('rxRate').value)
+  const vtbi = Number($('rxVtbi').value)
+  const drug = Number($('rxDrug').value)
+  const weight = Number($('rxWeight').value)
+  rxRecalc()
+  ipcRenderer.invoke('bridge:cmd', { op: 'setrate', rate, vtbi, drug, weight })
+  logEvent('rx', `SET_RATE ${drugLabel(drug)} ${rate} mL/h VTBI ${vtbi} mL / ${weight} kg`)
+}
+$('rxRead').onclick = () => {
+  ipcRenderer.invoke('bridge:cmd', { op: 'debug', cmd: 'get', args: '' })
+}
+$('rxOverrideGo').onclick = () => {
+  const code = $('rxOverride').value
+  ipcRenderer.invoke('bridge:cmd', { op: 'override', code })
+  logEvent('auth', `가드레일 해제 코드 입력: ${code}`)
+}
+
+// --- 환자 정보 ------------------------------------------------------------
+function loadPatient() {
+  try {
+    const p = JSON.parse(localStorage.getItem('cannula.patient') || 'null')
+    if (!p) return renderPatient()
+    $('ptId').value = p.id; $('ptName').value = p.name; $('ptBed').value = p.bed
+    $('ptWeight').value = p.weight; $('ptHeight').value = p.height; $('ptAllergy').value = p.allergy
+    renderPatient()
+  } catch (e) { renderPatient() }
+}
+function currentPatient() {
+  return {
+    id: $('ptId').value, name: $('ptName').value, bed: $('ptBed').value,
+    weight: $('ptWeight').value, height: $('ptHeight').value, allergy: $('ptAllergy').value
+  }
+}
+function renderPatient() {
+  const p = currentPatient()
+  $('ptCard').innerHTML =
+    `<b>${p.name}</b> (ID ${p.id}) · ${p.bed} · ${p.weight} kg / ${p.height} cm · 알레르기: ${p.allergy}`
+}
+$('ptSave').onclick = () => {
+  const p = currentPatient()
+  localStorage.setItem('cannula.patient', JSON.stringify(p))
+  $('rxWeight').value = p.weight
+  rxRecalc()
+  renderPatient()
+  $('ptSaved').textContent = '저장했습니다.'
+  logEvent('patient', `환자 배정: ${p.name} / ID ${p.id} / ${p.bed} / ${p.weight}kg / 알레르기 ${p.allergy}`)
+}
+
+// --- 진단 · CAN 콘솔 ------------------------------------------------------
+function svcSend(cmd, args) {
+  $('svcOut').innerHTML = '<span class="muted">응답 대기…</span>'
+  ipcRenderer.invoke('bridge:cmd', { op: 'debug', cmd, args: args || '' })
+  logEvent('service', `서비스 명령: ${cmd} ${args || ''}`)
+}
+$('svcGo').onclick = () => svcSend($('svcCmd').value.trim(), $('svcArgs').value.trim())
+$('svcHelp').onclick = () => svcSend('help', '')
+$('svcVer').onclick = () => svcSend('ver', '')
+$('svcGet').onclick = () => svcSend('get', '')
+
+let dumpBytes = []
+function collectDump(f) {
+  for (let i = 0; i + 1 < f.data.length; i += 2)
+    dumpBytes.push(parseInt(f.data.substr(i, 2), 16))
+  if (dumpBytes.length > 4096) dumpBytes = dumpBytes.slice(-4096)
+  renderDump()
+}
+function renderDump() {
+  if (!dumpBytes.length) { $('memOut').textContent = '—'; return }
+  const base = parseInt($('memAddr').value, 16) || 0
+  let out = ''
+  for (let i = 0; i < dumpBytes.length; i += 16) {
+    const row = dumpBytes.slice(i, i + 16)
+    const hex = row.map((b) => b.toString(16).padStart(2, '0')).join(' ')
+    const asc = row.map((b) => (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : '.').join('')
+    out += (base + i).toString(16).padStart(8, '0') + '  ' + hex.padEnd(47) + '  |' + asc + '|\n'
+  }
+  $('memOut').textContent = out
+}
+$('memGo').onclick = () => {
+  dumpBytes = []
+  const addr = parseInt($('memAddr').value, 16) || 0
+  const len = Number($('memLen').value)
+  ipcRenderer.invoke('bridge:cmd', { op: 'control', cmd: 0x06, token: 0x01, addr, arg: len })
+  logEvent('service', `메모리 덤프 요청 0x${addr.toString(16)} +${len}`)
+}
+
+$('txGo').onclick = () => {
+  const id = parseInt($('txId').value, 16) || 0
+  const dlc = Number($('txDlc').value)
+  const data = $('txData').value.replace(/[^0-9a-fA-F]/g, '')
+  ipcRenderer.invoke('bridge:cmd', { op: 'tx', id, dlc, data })
+  logEvent('service', `원시 프레임 0x${id.toString(16)} [${dlc}] ${data}`)
+}
+
+function fillDiagTools() {
+  const tools = (RT.config && RT.config.service) || {}
+  $('diagTool').innerHTML = Object.keys(tools).map((k) =>
+    `<option value="${k}">${k} — ${tools[k]}</option>`).join('')
+}
+$('diagGo').onclick = async () => {
+  const tool = $('diagTool').value
+  const extra = $('diagExtra').value
+  $('diagOut').textContent = '실행 중…'
+  const r = await ipcRenderer.invoke('diag:run', { tool, extra })
+  $('diagOut').textContent = r.error
+    ? '오류: ' + r.error
+    : `$ ${r.command}\n(종료 코드 ${r.exitCode})\n\n${r.output || '(출력 없음)'}`
+  logEvent('service', `진단 도구 실행: ${tool} ${extra}`)
+}
+
+// --- 펌웨어 전송 ----------------------------------------------------------
+async function fillFwList() {
+  const list = await ipcRenderer.invoke('fw:list')
+  $('fwList').innerHTML = list.map((f) =>
+    `<option value="${f.name}">${f.name} (${f.size} B)</option>`).join('')
+}
+function showFw(img) {
+  if (!img || img.error) {
+    $('fwInfo').textContent = '불러오기 실패: ' + ((img && img.error) || '알 수 없음')
+    $('fwSend').disabled = true
+    return
+  }
+  fwImage = img
+  const bytes = Buffer.from(img.dataB64, 'base64')
+  const chunks = Math.ceil(bytes.length / 48)
+  // 무결성 확인용 체크섬(펌프는 CRC 만 본다)
+  let crc = 0
+  for (const b of bytes) crc = ((crc << 5) - crc + b) & 0xFFFFFFFF
+  fwImage.bytes = bytes
+  fwImage.crc = crc >>> 0
+  fwImage.chunks = chunks
+  $('fwInfo').innerHTML =
+    `<div><b>${path.basename(img.path)}</b> · ${img.format.toUpperCase()} · ${bytes.length} 바이트</div>` +
+    `<div class="muted" style="margin-top:4px">청크 ${chunks} 개 · CRC 0x${(crc >>> 0).toString(16).toUpperCase()}</div>` +
+    `<div class="muted" style="margin-top:4px;font-family:var(--mono);font-size:11px">${bytes.slice(0, 24).toString('hex')}…</div>`
+  $('fwSend').disabled = false
+}
+$('fwLoad').onclick = async () => showFw(await ipcRenderer.invoke('fw:load', $('fwList').value))
+$('fwPick').onclick = async () => showFw(await ipcRenderer.invoke('fw:pick'))
+$('fwSend').onclick = async () => {
+  if (!fwImage) return
+  const { bytes, chunks, crc } = fwImage
+  $('fwSend').disabled = true
+  logEvent('firmware', `펌웨어 전송 시작: ${path.basename(fwImage.path)} (${chunks} 청크)`)
+  for (let i = 0; i < chunks; i++) {
+    const slice = bytes.slice(i * 48, i * 48 + 48)
+    await ipcRenderer.invoke('bridge:cmd', {
+      op: 'fw', chunk: i, total: chunks, crc, payload: slice.toString('hex')
+    })
+    $('fwProg').textContent = `${i + 1} / ${chunks} 청크`
+    $('fwBar').style.width = ((i + 1) / chunks * 100) + '%'
+    if (i % 4 === 3) await new Promise((r) => setTimeout(r, 20))
+  }
+  logEvent('firmware', '펌웨어 전송 완료')
+  $('fwSend').disabled = false
+}
+
+// --- 이벤트 로그 저장 -----------------------------------------------------
+function defaultLogName() {
+  // 펌프별로 파일을 나눈다. 장치 식별자는 펌프가 알려 준 값을 그대로 쓴다.
+  return `${(S.deviceId || 'unknown')}-events.csv`
+}
+
+// 사용자가 직접 이름을 정하기 전까지는 연결된 펌프의 식별자를 따라간다.
+let evNameEdited = false
+$('evName').addEventListener('input', () => { evNameEdited = true })
+function syncLogName() {
+  if (!evNameEdited) $('evName').value = defaultLogName()
+}
+$('evSave').onclick = async () => {
+  const name = $('evName').value || defaultLogName()
+  const p = currentPatient()
+  const head = `# CANnula Workstation ${RT.version} / ${session ? session.user : '-'}\n` +
+               `# 환자 ${p.name} (${p.id}) ${p.bed} ${p.weight}kg\n` +
+               `# 장치 ${S.deviceId}\n시각,구분,내용\n`
+  const body = events.slice().reverse().map((e) =>
+    `${e.t.toISOString()},${e.kind},"${String(e.text).replace(/"/g, '""')}"`).join('\n')
+  const r = await ipcRenderer.invoke('log:write', { name, text: head + body + '\n' })
+  $('evMsg').textContent = r.error ? '저장 실패: ' + r.error : '저장: ' + r.path
+}
+$('evList').onclick = async () => {
+  const list = await ipcRenderer.invoke('log:list')
+  $('evFiles').textContent = list.length
+    ? list.map((f) => `${f.size.toString().padStart(9)}  ${f.name}`).join('\n')
+    : '(없음)'
+}
+
+// --- 설정 -----------------------------------------------------------------
+$('stApply').onclick = () => {
+  const mode = $('stTransport').value
+  const serial = $('stSerial').value.trim()
+  const bitrate = Number($('stBitrate').value)
+  ipcRenderer.invoke('bridge:cmd', { op: 'transport', mode, serial, bitrate })
+  $('hdrTransport').textContent = '전송 ' + mode
+  logEvent('config', `전송 방식 변경: ${mode} ${serial} ${bitrate}kbps`)
+}
+$('stReconnect').onclick = () => ipcRenderer.invoke('bridge:reconnect')
+$('stRestart').onclick = () => ipcRenderer.invoke('bridge:restart')
+$('stReset').onclick = () => ipcRenderer.invoke('bridge:cmd', { op: 'reset' })
+
+// --- 소프트웨어 업데이트 ---------------------------------------------------
+let updateManifest = null
+$('upCheck').onclick = async () => {
+  $('upOut').textContent = '확인 중…'
+  const m = await ipcRenderer.invoke('update:check')
+  updateManifest = m
+  $('upOut').textContent = JSON.stringify(m, null, 2)
+  $('upApply').disabled = !(m && m.artifactUrl)
+  if (m && m.base) $('upBase').textContent = m.base
+}
+$('upApply').onclick = async () => {
+  if (!updateManifest || !updateManifest.artifactUrl) return
+  $('upOut').textContent = '내려받아 적용 중…'
+  const r = await ipcRenderer.invoke('update:apply', updateManifest.artifactUrl)
+  $('upOut').textContent = JSON.stringify(r, null, 2)
+  logEvent('update', `업데이트 적용: ${updateManifest.artifactUrl}`)
+}
+
+// --- 정보 -----------------------------------------------------------------
+function renderAbout() {
+  $('aboutOut').textContent =
+`제품            CANnula Clinical Workstation (WEAK)
+버전            ${RT.version}
+플랫폼          ${RT.platform} (pid ${RT.pid})
+설치 자원       ${RT.root}
+설정 파일       ${RT.configPath}
+게이트웨이      ${RT.bridgeExe}
+게이트웨이 인자 ${(RT.bridgeArgs || []).join(' ')}
+로그 폴더       ${RT.logDir}
+펌웨어 폴더     ${RT.firmwareDir}
+확장 폴더       ${RT.pluginDir}
+불러온 확장     ${(RT.plugins || []).map((p) => p.name + ' ' + p.version).join(', ') || '(없음)'}
+CAN 엔진        ${S.deviceId ? '연결됨' : '대기'}
+대상 펌웨어     CANnula v0.0.1 (STM32F103C8T6)`
+}
+
+// --- 기동 -----------------------------------------------------------------
+;(async function boot() {
+  RT = await ipcRenderer.invoke('app:runtime')
+  $('hdrVer').textContent = 'v' + RT.version
+  $('upCur').textContent = RT.version
+  $('upBase').textContent = ((RT.config || {}).update || {}).base_url || '—'
+  $('stCfgPath').textContent = RT.configPath
+  $('stExe').textContent = RT.bridgeExe
+  $('stCfg').textContent = JSON.stringify(RT.config, null, 2)
+  $('stPlugins').textContent = (RT.plugins || []).map((p) =>
+    `${p.ok ? 'OK  ' : 'FAIL'} ${p.file}  ${p.name} ${p.version}${p.error ? '  — ' + p.error : ''}`
+  ).join('\n') || '(없음)'
+
+  const site = (RT.config || {}).site || {}
+  $('siteInfo').innerHTML =
+    `${site.name || '—'}<br>${site.ward || ''} · ${site.workstation || ''}`
+
+  // 로그인 화면에 이 사이트의 계정 안내를 띄운다.
+  const acc = accounts()
+  $('lgHint').innerHTML = '이 사이트 계정: ' +
+    Object.keys(acc).map((u) => `<code>${u}</code>`).join(', ')
+
+  const ders = (RT.config || {}).ders || {}
+  if (ders.override_code) $('rxOverride').placeholder = `기사용 코드 (매뉴얼 참조)`
+
+  fillDrugs()
+  fillDiagTools()
+  fillFwList()
+  loadPatient()
+  rxRecalc()
+  $('evName').value = defaultLogName()
+
+  // 이전 세션 복원
+  try {
+    const s = JSON.parse(localStorage.getItem('cannula.session') || 'null')
+    if (s && s.user) { session = s; $('login').classList.add('hide'); applySession() }
+  } catch (e) {}
+
+  // 이 화면이 만들어지기 전에 게이트웨이가 붙었을 수도 있으니 현재 상태를 물어본다.
+  const bs = await ipcRenderer.invoke('bridge:up')
+  if (bs) {
+    const b = $('hdrBridge')
+    b.textContent = '게이트웨이 ' + (bs.up ? '연결' : '끊김')
+    b.className = 'badge ' + (bs.up ? 'on' : 'off')
+    $('stBridge').textContent = bs.up
+      ? `연결됨 (${bs.host}:${bs.port})` : `끊김 ${bs.error || ''}`
+  }
+
+  const s0 = await ipcRenderer.invoke('bridge:state')
+  if (s0 && s0.deviceId) applyState(s0)
+
+  syncLogName()
+})()
+</script>
+</body>
+</html>

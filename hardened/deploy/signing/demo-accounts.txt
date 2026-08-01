@@ -1,0 +1,10 @@
+강화 빌드 데모 계정 (교육용 — 실제 배포 시 사이트에서 재발급)
+  비밀번호는 네 계정 모두 password
+
+  nurse.kim    password   (nurse)
+  nurse.lee    password   (nurse)
+  tech.park    password   (tech)
+  admin        password   (admin)
+
+해시를 다시 만들려면:
+  node -e 'const c=require("crypto"),s=c.randomBytes(16),h=c.scryptSync(process.argv[1],s,32,{N:16384,r:8,p:1});console.log(["scrypt",16384,8,1,s.toString("base64"),h.toString("base64"),process.argv[2]].join("$"))' <비밀번호> <역할>

@@ -1,0 +1,49 @@
+{
+  "name": "cannula-workstation-hardened",
+  "version": "0.0.2",
+  "private": true,
+  "description": "CANnula Clinical Workstation (HARDENED) — CAN 인퓨전 펌프 임상 워크스테이션. v0.0.1 취약 빌드의 대조군(방어 정답).",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "native": "bash native/build.sh",
+    "native:win": "bash native/build.sh --win",
+    "sign": "node deploy/sign.js runtime/plugins/site-drug-labels.js",
+    "dist:win": "electron-builder --win",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.special-partners.cannula-workstation-hardened",
+    "productName": "CANnula-Workstation-HARDENED",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "renderer/**/*", "package.json"],
+    "extraResources": [
+      { "from": "runtime/config", "to": "config", "filter": ["!cannula.key"] },
+      { "from": "runtime/plugins", "to": "plugins" },
+      { "from": "runtime/docs", "to": "docs" },
+      { "from": "runtime/bin", "to": "bin", "filter": ["*.exe", "*.dll"] }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "CANnula-Workstation-HARDENED-Setup-${version}.exe",
+      "shortcutName": "CANnula Workstation"
+    },
+    "forceCodeSigning": false
+  }
+}
