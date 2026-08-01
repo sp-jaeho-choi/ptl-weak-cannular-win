@@ -213,6 +213,10 @@ static int serial_open(const char *port, int bitrate)
                            OPEN_EXISTING, 0, NULL);
     if (g_serial == SERIAL_BAD) return -1;
 
+    /* 기본 입력 큐는 1~2 KB 뿐이라 500k 버스의 프레임 폭주에서 넘친다.
+       넉넉히 잡아 오버런 자체를 줄인다 (넘쳤을 때의 복구는 serial_pump 참고). */
+    SetupComm(g_serial, 16384, 4096);
+
     DCB dcb = { 0 };
     dcb.DCBlength = sizeof(dcb);
     GetCommState(g_serial, &dcb);
@@ -225,6 +229,8 @@ static int serial_open(const char *port, int bitrate)
     COMMTIMEOUTS to = { 0 };
     to.ReadIntervalTimeout = MAXDWORD;   /* 즉시 반환 */
     SetCommTimeouts(g_serial, &to);
+
+    PurgeComm(g_serial, PURGE_RXCLEAR | PURGE_TXCLEAR);
 #else
     g_serial = open(port, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (g_serial == SERIAL_BAD) return -1;
@@ -698,6 +704,15 @@ static void serial_pump(void)
     char buf[256];
     int n = 0;
 #ifdef _WIN32
+    /* 래치된 통신 오류를 먼저 지운다. Windows 시리얼 드라이버는 수신 오버런이나
+       프레이밍 오류가 한 번 나면 그 상태를 붙들고 있고, ClearCommError 로 지우기
+       전까지 이후 ReadFile 이 전부 실패한다. 지우지 않으면 어댑터도 케이블도
+       멀쩡한데 게이트웨이만 조용히 영구 정지한다 (실제로 500k 버스에서 2 분쯤
+       뒤에 재현됐다). */
+    DWORD comm_errs = 0;
+    COMSTAT comm_stat;
+    ClearCommError(g_serial, &comm_errs, &comm_stat);
+
     DWORD rd = 0;
     if (!ReadFile(g_serial, buf, sizeof(buf), &rd, NULL)) return;
     n = (int)rd;
