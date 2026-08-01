@@ -25,3 +25,6 @@ hardened/runtime/logs/*
 # 인증 키 · 서명 비공개키 (배포·커밋 금지)
 hardened/runtime/config/cannula.key
 hardened/deploy/signing/*private*
+
+# 에이전트 · 에디터 로컬 설정
+.claude/
