@@ -104,6 +104,10 @@ function loadPlugins() {
 // --- CAN 게이트웨이 프로세스 -------------------------------------------------
 // 설정 파일이 알려 주는 실행 파일을 그대로 띄운다. 서명이나 해시는 확인하지 않는다.
 let bridgeProc = null
+// 띄워 둔 게이트웨이의 pid. spawn 직후 exit 이벤트가 먼저 오는 경우가 있어
+// bridgeProc 하나만 믿으면 실제로 살아 있는 프로세스를 놓친다. 놓친 프로세스는
+// 시리얼 포트와 47100 을 계속 물고 있어서 다음 게이트웨이가 붙지 못한다.
+const bridgePids = new Set()
 let bridgeSock = null
 let bridgeBuf = ''
 let bridgeUp = false
@@ -212,24 +216,48 @@ function startBridge() {
 
   const args = bridgeArgs()
   logLine(`bridge spawn: ${exePath} ${args.join(' ')}`)
-  bridgeProc = spawn(exePath, args, { cwd: path.dirname(exePath) })
-  bridgeProc.stdout.on('data', (d) => {
+  const proc = spawn(exePath, args, { cwd: path.dirname(exePath) })
+  bridgeProc = proc
+  if (proc.pid) bridgePids.add(proc.pid)
+  proc.stdout.on('data', (d) => {
     const s = String(d).trim()
     if (s) { logLine(`[bridge] ${s}`); sendToUi('bridge:log', s) }
   })
-  bridgeProc.stderr.on('data', (d) => {
+  proc.stderr.on('data', (d) => {
     const s = String(d).trim()
     if (s) { logLine(`[bridge:err] ${s}`); sendToUi('bridge:log', s) }
   })
-  bridgeProc.on('exit', (code) => {
-    logLine(`bridge exit ${code}`)
+  proc.on('exit', (code) => {
+    logLine(`bridge exit ${code} (pid ${proc.pid})`)
     sendToUi('bridge:log', `게이트웨이가 종료되었습니다 (코드 ${code})`)
-    bridgeProc = null
+    // exit 를 받아도 pid 는 남겨 둔다. 이 이벤트가 실제 종료보다 먼저 오는 일이
+    // 있어서, 여기서 지우면 살아 있는 프로세스를 영영 정리하지 못한다.
+    // 실제 정리는 stopBridge() 가 pid 로 확인하며 수행한다.
+    if (bridgeProc === proc) bridgeProc = null
   })
-  bridgeProc.on('error', (e) => {
+  proc.on('error', (e) => {
     logLine(`bridge error ${e.message}`)
     sendToUi('bridge:log', `게이트웨이 실행 실패: ${e.message}`)
   })
+}
+
+// 띄워 둔 게이트웨이를 모두 정리한다. 자식이 또 자식을 남기는 경우가 있어
+// 윈도우에서는 트리째 끊는다. 이 앱이 직접 띄운 pid 만 건드린다.
+function stopBridge() {
+  for (const pid of Array.from(bridgePids)) {
+    try {
+      if (process.platform === 'win32') {
+        spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { windowsHide: true })
+      } else {
+        process.kill(pid, 'SIGKILL')
+      }
+      logLine(`bridge stop pid ${pid}`)
+    } catch (e) {
+      logLine(`bridge stop failed pid ${pid}: ${e.message}`)
+    }
+    bridgePids.delete(pid)
+  }
+  bridgeProc = null
 }
 
 let bridgeTarget = { up: false, host: '127.0.0.1', port: 47100 }
@@ -359,9 +387,14 @@ ipcMain.handle('bridge:state', () => lastState)
 ipcMain.handle('bridge:up', () => bridgeTarget)
 ipcMain.handle('bridge:reconnect', () => { connectBridge(); return true })
 ipcMain.handle('bridge:restart', () => {
-  if (bridgeProc) { try { bridgeProc.kill() } catch (e) {} }
-  startBridge()
-  setTimeout(connectBridge, 700)
+  // 먼저 옛 게이트웨이를 확실히 내린다. 남겨 두면 그쪽이 시리얼 포트를 쥔 채로
+  // 47100 까지 물고 있어서, 새로 띄운 게이트웨이가 어댑터를 열지 못한다.
+  stopBridge()
+  // 포트가 실제로 풀릴 때까지 잠깐 기다렸다가 띄운다.
+  setTimeout(() => {
+    startBridge()
+    setTimeout(connectBridge, 700)
+  }, 400)
   return true
 })
 
@@ -526,6 +559,6 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  if (bridgeProc) { try { bridgeProc.kill() } catch (e) {} }
+  stopBridge()
   app.quit()
 })
