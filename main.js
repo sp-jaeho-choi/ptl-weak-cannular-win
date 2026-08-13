@@ -268,8 +268,16 @@ function connectBridge() {
   const port = Number(cfg.port || 47100)
   bridgeTarget = { up: false, host, port }
 
-  if (bridgeSock) { try { bridgeSock.destroy() } catch (e) {} }
-  bridgeSock = net.createConnection({ host, port }, () => {
+  // 옛 소켓은 리스너를 떼고 닫는다. 떼지 않으면 그 소켓의 close 가 새 소켓이
+  // 붙은 뒤에 도착해서 전역 bridgeUp 을 false 로 되돌린다. 그렇게 되면 화면은
+  // "끊김" 이 되고 bridgeSend 가 명령을 조용히 버려서, 연결된 것처럼 보이는데
+  // 주입 명령이 하나도 나가지 않는 상태가 된다.
+  if (bridgeSock) {
+    try { bridgeSock.removeAllListeners(); bridgeSock.destroy() } catch (e) {}
+  }
+
+  const sock = net.createConnection({ host, port }, () => {
+    if (bridgeSock !== sock) { try { sock.destroy() } catch (e) {} ; return }
     bridgeUp = true
     bridgeBuf = ''
     bridgeTarget = { up: true, host, port }
@@ -277,8 +285,11 @@ function connectBridge() {
     sendToUi('bridge:status', bridgeTarget)
     bridgeSend({ op: 'hello' })
   })
-  bridgeSock.setEncoding('utf8')
-  bridgeSock.on('data', (chunk) => {
+  bridgeSock = sock
+
+  sock.setEncoding('utf8')
+  sock.on('data', (chunk) => {
+    if (bridgeSock !== sock) return
     bridgeBuf += chunk
     let nl
     while ((nl = bridgeBuf.indexOf('\n')) >= 0) {
@@ -290,13 +301,16 @@ function connectBridge() {
       handleBridgeEvent(msg)
     }
   })
-  bridgeSock.on('error', (e) => {
+  // 지난 소켓이 늦게 뱉는 error/close 는 현재 연결과 무관하므로 무시한다.
+  sock.on('error', (e) => {
+    if (bridgeSock !== sock) return
     if (bridgeUp) logLine(`bridge socket error ${e.message}`)
     bridgeUp = false
     bridgeTarget = { up: false, error: e.message, host, port }
     sendToUi('bridge:status', bridgeTarget)
   })
-  bridgeSock.on('close', () => {
+  sock.on('close', () => {
+    if (bridgeSock !== sock) return
     bridgeUp = false
     bridgeTarget = { up: false, host, port }
     sendToUi('bridge:status', bridgeTarget)
